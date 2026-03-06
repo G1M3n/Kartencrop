@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+.env/
+
+# Test and local cache
+.pytest_cache/
+.tmp_pytest/
+.test_artifacts/
+.coverage
+coverage.xml
+htmlcov/
+
+# Editors and OS files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# Local temporary directories
+tmp*/
+*.tmp
+*.log
+
+# Build artifacts
+build/
+build_*/
+dist/
+dist_*/
+
+# Generated outputs, caches, previews and local UI state
+outputs/
+smoke_outputs/
+
+# Optional local streamlit state
+.streamlit/

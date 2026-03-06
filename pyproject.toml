@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kartencrop"
+version = "0.1.0"
+description = "Werkzeuge zum Laden, Zusammenbauen und Croppen von Kartenbildern aus mehreren Kartendiensten."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.32,<3",
+    "pillow>=12,<13",
+    "tqdm>=4.67,<5",
+    "matplotlib>=3.9,<4",
+    "mapbox-vector-tile>=2.2,<3",
+    "streamlit>=1.43,<2",
+    "folium>=0.20,<0.21",
+    "streamlit-folium>=0.26,<0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9,<10",
+    "pyinstaller>=6.16,<7",
+]
+
+[project.scripts]
+kartencrop = "kartencrop.cli:main"
+kartencrop-ui = "kartencrop.launcher:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["kartencrop*"]
+
+[tool.setuptools.package-data]
+kartencrop = ["leaflet_picker_component/*"]

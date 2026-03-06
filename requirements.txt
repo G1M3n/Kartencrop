@@ -1,0 +1,8 @@
+requests>=2.32,<3
+pillow>=12,<13
+tqdm>=4.67,<5
+matplotlib>=3.9,<4
+mapbox-vector-tile>=2.2,<3
+streamlit>=1.43,<2
+folium>=0.20,<0.21
+streamlit-folium>=0.26,<0.27

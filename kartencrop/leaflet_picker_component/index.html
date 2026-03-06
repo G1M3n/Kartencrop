@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: "Segoe UI", sans-serif;
+        background: #f5f5f5;
+      }
+
+      #app {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+
+      #map {
+        position: relative;
+        width: 100%;
+        height: 460px;
+        overflow: hidden;
+        background: #dfe8ef;
+        user-select: none;
+        cursor: crosshair;
+      }
+
+      #tiles,
+      #overlays {
+        position: absolute;
+        inset: 0;
+      }
+
+      .tile {
+        position: absolute;
+        width: 256px;
+        height: 256px;
+        image-rendering: auto;
+      }
+
+      .frame-box,
+      .selection-box {
+        position: absolute;
+        box-sizing: border-box;
+        pointer-events: none;
+      }
+
+      .frame-box {
+        border: 2px solid rgba(31, 119, 180, 0.9);
+        background: rgba(31, 119, 180, 0.04);
+      }
+
+      .selection-box {
+        border: 2px dashed rgba(214, 39, 40, 0.9);
+        background: rgba(214, 39, 40, 0.08);
+      }
+
+      .selection-point {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        margin-left: -7px;
+        margin-top: -7px;
+        border-radius: 50%;
+        border: 2px solid #8c1d18;
+        background: rgba(255, 107, 107, 0.95);
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+        pointer-events: none;
+      }
+
+      #toolbar {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 1000;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        max-width: calc(100% - 24px);
+      }
+
+      .toolbar-group {
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid #cdd5df;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+      }
+
+      .toolbar-button,
+      .toolbar-select {
+        border: 1px solid #c3ccd8;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #1f2937;
+        font-size: 12px;
+        line-height: 1;
+        padding: 8px 10px;
+      }
+
+      .toolbar-button.active {
+        background: #1f77b4;
+        color: #ffffff;
+        border-color: #1f77b4;
+      }
+
+      .toolbar-button {
+        cursor: pointer;
+      }
+
+      .toolbar-button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      #status {
+        position: absolute;
+        right: 10px;
+        top: 10px;
+        z-index: 1000;
+        max-width: 340px;
+        padding: 8px 10px;
+        border: 1px solid #cdd5df;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      #status strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="map">
+        <div id="tiles"></div>
+        <div id="overlays"></div>
+        <div id="toolbar">
+          <div class="toolbar-group">
+            <button id="mode-point" class="toolbar-button active" type="button">Punkt</button>
+            <button id="mode-rect" class="toolbar-button" type="button">Rechteck</button>
+          </div>
+          <div class="toolbar-group">
+            <button id="zoom-out" class="toolbar-button" type="button">-</button>
+            <button id="zoom-in" class="toolbar-button" type="button">+</button>
+          </div>
+          <div class="toolbar-group">
+            <select id="basemap" class="toolbar-select">
+              <option value="osm">OpenStreetMap</option>
+              <option value="esri">Esri Topo</option>
+            </select>
+          </div>
+        </div>
+        <div id="status">
+          <strong>Auswahl</strong>
+          Klicke fuer einen Mittelpunkt oder wechsle in den Rechteckmodus.
+        </div>
+      </div>
+    </div>
+    <script>
+      const COMPONENT_READY = "streamlit:componentReady";
+      const SET_COMPONENT_VALUE = "streamlit:setComponentValue";
+      const SET_FRAME_HEIGHT = "streamlit:setFrameHeight";
+      const RENDER_EVENT = "streamlit:render";
+      const TILE_SIZE = 256;
+      const MAX_LAT = 85.05112878;
+
+      const TILE_SOURCES = {
+        osm: {
+          label: "OpenStreetMap",
+          url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        },
+        esri: {
+          label: "Esri Topo",
+          url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        },
+      };
+
+      function postMessage(type, payload) {
+        window.parent.postMessage(
+          {
+            isStreamlitMessage: true,
+            type,
+            ...payload,
+          },
+          "*"
+        );
+      }
+
+      function setFrameHeight(height) {
+        postMessage(SET_FRAME_HEIGHT, { height });
+      }
+
+      function setComponentValue(value) {
+        postMessage(SET_COMPONENT_VALUE, { value });
+      }
+
+      postMessage(COMPONENT_READY, { apiVersion: 1 });
+
+      const mapElement = document.getElementById("map");
+      const tilesElement = document.getElementById("tiles");
+      const overlaysElement = document.getElementById("overlays");
+      const statusElement = document.getElementById("status");
+      const modePointButton = document.getElementById("mode-point");
+      const modeRectButton = document.getElementById("mode-rect");
+      const zoomInButton = document.getElementById("zoom-in");
+      const zoomOutButton = document.getElementById("zoom-out");
+      const basemapSelect = document.getElementById("basemap");
+
+      const state = {
+        center: { lat: 52.52, lon: 13.405 },
+        zoom: 8,
+        basemap: "osm",
+        mode: "point",
+        currentBBox: null,
+        selection: { point: null, bounds: null },
+        resetToken: 0,
+        eventId: 0,
+        dragging: null,
+      };
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function mod(value, max) {
+        return ((value % max) + max) % max;
+      }
+
+      function worldSize(zoom) {
+        return TILE_SIZE * Math.pow(2, zoom);
+      }
+
+      function project(lat, lon, zoom) {
+        const clampedLat = clamp(lat, -MAX_LAT, MAX_LAT);
+        const sinLat = Math.sin((clampedLat * Math.PI) / 180);
+        const size = worldSize(zoom);
+        return {
+          x: ((lon + 180) / 360) * size,
+          y:
+            (0.5 -
+              Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) *
+            size,
+        };
+      }
+
+      function unproject(x, y, zoom) {
+        const size = worldSize(zoom);
+        const lon = (x / size) * 360 - 180;
+        const n = Math.PI - (2 * Math.PI * y) / size;
+        const lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+        return { lat, lon };
+      }
+
+      function currentViewport() {
+        return {
+          width: mapElement.clientWidth,
+          height: mapElement.clientHeight,
+        };
+      }
+
+      function topLeftWorld() {
+        const viewport = currentViewport();
+        const centerWorld = project(state.center.lat, state.center.lon, state.zoom);
+        return {
+          x: centerWorld.x - viewport.width / 2,
+          y: centerWorld.y - viewport.height / 2,
+        };
+      }
+
+      function screenToLatLon(screenX, screenY) {
+        const topLeft = topLeftWorld();
+        return unproject(topLeft.x + screenX, topLeft.y + screenY, state.zoom);
+      }
+
+      function latLonToScreen(lat, lon) {
+        const viewport = currentViewport();
+        const size = worldSize(state.zoom);
+        const centerWorld = project(state.center.lat, state.center.lon, state.zoom);
+        const pointWorld = project(lat, lon, state.zoom);
+        let dx = pointWorld.x - centerWorld.x;
+        if (dx > size / 2) dx -= size;
+        if (dx < -size / 2) dx += size;
+        const dy = pointWorld.y - centerWorld.y;
+        return {
+          x: viewport.width / 2 + dx,
+          y: viewport.height / 2 + dy,
+        };
+      }
+
+      function emitSelection() {
+        state.eventId += 1;
+        const selectionType = state.selection.bounds
+          ? "bounds"
+          : state.selection.point
+            ? "point"
+            : "none";
+        setComponentValue({
+          point: state.selection.point,
+          bounds: state.selection.bounds,
+          selection_type: selectionType,
+          event_id: state.eventId,
+        });
+      }
+
+      function clearSelection(emit = false) {
+        state.selection = { point: null, bounds: null };
+        render();
+        if (emit) {
+          emitSelection();
+        }
+      }
+
+      function setPointSelection(point) {
+        state.selection = { point, bounds: null };
+        render();
+        emitSelection();
+      }
+
+      function setBoundsSelection(bounds) {
+        state.selection = { point: null, bounds };
+        render();
+        emitSelection();
+      }
+
+      function updateToolbar() {
+        modePointButton.classList.toggle("active", state.mode === "point");
+        modeRectButton.classList.toggle("active", state.mode === "rect");
+        basemapSelect.value = state.basemap;
+      }
+
+      function updateStatus() {
+        if (state.selection.bounds) {
+          const b = state.selection.bounds;
+          const center = {
+            lat: (b.lat_min + b.lat_max) / 2,
+            lon: (b.lon_min + b.lon_max) / 2,
+          };
+          statusElement.innerHTML =
+            "<strong>Rechteck</strong>" +
+            `Lat ${b.lat_min.toFixed(6)}..${b.lat_max.toFixed(6)}, Lon ${b.lon_min.toFixed(6)}..${b.lon_max.toFixed(6)}` +
+            "<br/>Mittelpunkt: " +
+            `Lat ${center.lat.toFixed(6)}, Lon ${center.lon.toFixed(6)}`;
+          return;
+        }
+        if (state.selection.point) {
+          const p = state.selection.point;
+          statusElement.innerHTML =
+            "<strong>Punkt</strong>" + `Lat ${p.lat.toFixed(6)}, Lon ${p.lon.toFixed(6)}`;
+          return;
+        }
+        statusElement.innerHTML =
+          "<strong>Auswahl</strong>" +
+          (state.mode === "rect"
+            ? "Ziehe mit der Maus ein Rechteck auf."
+            : "Klicke fuer einen Mittelpunkt oder wechsle in den Rechteckmodus.");
+      }
+
+      function createBox(className, left, top, width, height) {
+        const element = document.createElement("div");
+        element.className = className;
+        element.style.left = `${left}px`;
+        element.style.top = `${top}px`;
+        element.style.width = `${width}px`;
+        element.style.height = `${height}px`;
+        return element;
+      }
+
+      function renderOverlays() {
+        overlaysElement.innerHTML = "";
+
+        if (state.currentBBox) {
+          const topLeft = latLonToScreen(state.currentBBox.lat_max, state.currentBBox.lon_min);
+          const bottomRight = latLonToScreen(state.currentBBox.lat_min, state.currentBBox.lon_max);
+          overlaysElement.appendChild(
+            createBox(
+              "frame-box",
+              Math.min(topLeft.x, bottomRight.x),
+              Math.min(topLeft.y, bottomRight.y),
+              Math.abs(bottomRight.x - topLeft.x),
+              Math.abs(bottomRight.y - topLeft.y)
+            )
+          );
+        }
+
+        if (state.selection.bounds) {
+          const topLeft = latLonToScreen(state.selection.bounds.lat_max, state.selection.bounds.lon_min);
+          const bottomRight = latLonToScreen(state.selection.bounds.lat_min, state.selection.bounds.lon_max);
+          overlaysElement.appendChild(
+            createBox(
+              "selection-box",
+              Math.min(topLeft.x, bottomRight.x),
+              Math.min(topLeft.y, bottomRight.y),
+              Math.abs(bottomRight.x - topLeft.x),
+              Math.abs(bottomRight.y - topLeft.y)
+            )
+          );
+        }
+
+        if (state.dragging && state.dragging.type === "rect" && state.dragging.preview) {
+          const preview = state.dragging.preview;
+          overlaysElement.appendChild(
+            createBox(
+              "selection-box",
+              Math.min(preview.startX, preview.endX),
+              Math.min(preview.startY, preview.endY),
+              Math.abs(preview.endX - preview.startX),
+              Math.abs(preview.endY - preview.startY)
+            )
+          );
+        }
+
+        if (state.selection.point) {
+          const point = latLonToScreen(state.selection.point.lat, state.selection.point.lon);
+          const marker = document.createElement("div");
+          marker.className = "selection-point";
+          marker.style.left = `${point.x}px`;
+          marker.style.top = `${point.y}px`;
+          overlaysElement.appendChild(marker);
+        }
+      }
+
+      function renderTiles() {
+        const viewport = currentViewport();
+        const source = TILE_SOURCES[state.basemap];
+        const topLeft = topLeftWorld();
+        const scale = Math.pow(2, state.zoom);
+        const maxIndex = scale;
+        const startTileX = Math.floor(topLeft.x / TILE_SIZE);
+        const endTileX = Math.floor((topLeft.x + viewport.width) / TILE_SIZE);
+        const startTileY = Math.floor(topLeft.y / TILE_SIZE);
+        const endTileY = Math.floor((topLeft.y + viewport.height) / TILE_SIZE);
+
+        tilesElement.innerHTML = "";
+
+        for (let tileY = startTileY; tileY <= endTileY; tileY += 1) {
+          if (tileY < 0 || tileY >= maxIndex) {
+            continue;
+          }
+          for (let tileX = startTileX; tileX <= endTileX; tileX += 1) {
+            const image = document.createElement("img");
+            image.className = "tile";
+            image.draggable = false;
+            image.alt = "";
+            image.style.left = `${tileX * TILE_SIZE - topLeft.x}px`;
+            image.style.top = `${tileY * TILE_SIZE - topLeft.y}px`;
+            image.src = source.url
+              .replace("{z}", String(state.zoom))
+              .replace("{x}", String(mod(tileX, maxIndex)))
+              .replace("{y}", String(tileY));
+            tilesElement.appendChild(image);
+          }
+        }
+      }
+
+      function render() {
+        updateToolbar();
+        renderTiles();
+        renderOverlays();
+        updateStatus();
+        setFrameHeight(mapElement.clientHeight + 8);
+      }
+
+      function setCenter(lat, lon) {
+        state.center = {
+          lat: clamp(lat, -MAX_LAT, MAX_LAT),
+          lon,
+        };
+      }
+
+      function zoomBy(delta) {
+        state.zoom = clamp(state.zoom + delta, 1, 18);
+        render();
+      }
+
+      function pointerPosition(event) {
+        const rect = mapElement.getBoundingClientRect();
+        return {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top,
+        };
+      }
+
+      function startPointDrag(event) {
+        const centerWorld = project(state.center.lat, state.center.lon, state.zoom);
+        state.dragging = {
+          type: "point",
+          startX: event.clientX,
+          startY: event.clientY,
+          originCenterWorld: centerWorld,
+          moved: false,
+        };
+      }
+
+      function startRectDrag(position) {
+        state.dragging = {
+          type: "rect",
+          preview: {
+            startX: position.x,
+            startY: position.y,
+            endX: position.x,
+            endY: position.y,
+          },
+        };
+        renderOverlays();
+      }
+
+      function handleMouseDown(event) {
+        if (event.button !== 0) {
+          return;
+        }
+        if (state.mode === "rect") {
+          startRectDrag(pointerPosition(event));
+        } else {
+          startPointDrag(event);
+        }
+      }
+
+      function handleMouseMove(event) {
+        if (!state.dragging) {
+          return;
+        }
+        if (state.dragging.type === "rect") {
+          const position = pointerPosition(event);
+          state.dragging.preview.endX = position.x;
+          state.dragging.preview.endY = position.y;
+          renderOverlays();
+          return;
+        }
+
+        const dx = event.clientX - state.dragging.startX;
+        const dy = event.clientY - state.dragging.startY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+          state.dragging.moved = true;
+        }
+        if (!state.dragging.moved) {
+          return;
+        }
+        const newWorldX = state.dragging.originCenterWorld.x - dx;
+        const newWorldY = state.dragging.originCenterWorld.y - dy;
+        const center = unproject(newWorldX, newWorldY, state.zoom);
+        setCenter(center.lat, center.lon);
+        render();
+      }
+
+      function handleMouseUp(event) {
+        if (!state.dragging) {
+          return;
+        }
+
+        if (state.dragging.type === "rect") {
+          const preview = state.dragging.preview;
+          const width = Math.abs(preview.endX - preview.startX);
+          const height = Math.abs(preview.endY - preview.startY);
+          state.dragging = null;
+          if (width < 5 || height < 5) {
+            render();
+            return;
+          }
+          const first = screenToLatLon(preview.startX, preview.startY);
+          const second = screenToLatLon(preview.endX, preview.endY);
+          setBoundsSelection({
+            lat_min: Math.min(first.lat, second.lat),
+            lon_min: Math.min(first.lon, second.lon),
+            lat_max: Math.max(first.lat, second.lat),
+            lon_max: Math.max(first.lon, second.lon),
+          });
+          return;
+        }
+
+        const drag = state.dragging;
+        state.dragging = null;
+        if (!drag.moved) {
+          const position = pointerPosition(event);
+          setPointSelection(screenToLatLon(position.x, position.y));
+          return;
+        }
+        render();
+      }
+
+      function handleWheel(event) {
+        event.preventDefault();
+        zoomBy(event.deltaY < 0 ? 1 : -1);
+      }
+
+      function applyRenderArgs(args) {
+        if (args.center) {
+          setCenter(Number(args.center.lat), Number(args.center.lon));
+        }
+        if (typeof args.zoom === "number") {
+          state.zoom = clamp(args.zoom, 1, 18);
+        }
+        state.currentBBox = args.current_bbox || null;
+        if (typeof args.height === "number") {
+          mapElement.style.height = `${args.height}px`;
+        }
+        if (state.resetToken !== args.reset_token) {
+          state.resetToken = args.reset_token;
+          state.selection = { point: null, bounds: null };
+          state.dragging = null;
+        }
+        render();
+      }
+
+      modePointButton.addEventListener("click", () => {
+        state.mode = "point";
+        render();
+      });
+
+      modeRectButton.addEventListener("click", () => {
+        state.mode = "rect";
+        render();
+      });
+
+      zoomInButton.addEventListener("click", () => zoomBy(1));
+      zoomOutButton.addEventListener("click", () => zoomBy(-1));
+
+      basemapSelect.addEventListener("change", (event) => {
+        state.basemap = event.target.value;
+        render();
+      });
+
+      mapElement.addEventListener("mousedown", handleMouseDown);
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+      mapElement.addEventListener("wheel", handleWheel, { passive: false });
+
+      window.addEventListener("message", (event) => {
+        if (!event.data || event.data.type !== RENDER_EVENT) {
+          return;
+        }
+        applyRenderArgs(event.data.args || {});
+      });
+
+      window.addEventListener("resize", () => {
+        render();
+      });
+
+      render();
+      setFrameHeight(mapElement.clientHeight + 8);
+    </script>
+  </body>
+</html>
