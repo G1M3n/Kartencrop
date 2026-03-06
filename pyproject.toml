@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kartencrop"
 version = "0.1.0"
-description = "Werkzeuge zum Laden, Zusammenbauen und Croppen von Kartenbildern aus mehreren Kartendiensten."
+description = "Werkzeug zum Laden, Zusammensetzen und Zuschneiden von Karten aus mehreren Quellen."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

@@ -1,162 +1,235 @@
 # Kartencrop
 
-Modulare Werkzeuge zum Erstellen, Kombinieren und Croppen grosser Kartenbilder aus mehreren Kartendiensten.
+Kartencrop ist ein Werkzeug zum Laden, Zusammensetzen und Zuschneiden von Karten aus mehreren Quellen.
 
-## Setup
+Der Schwerpunkt liegt auf:
 
-```bash
-py -3 -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
+- `OpenFlightMaps`
+- `GeoPF SCAN-OACI`
+- `OpenAIP`
+- `GeoAdmin WMS` fuer die Schweiz
+
+Das Projekt bietet zwei Wege:
+
+- eine Streamlit-Oberflaeche fuer die interaktive Nutzung
+- eine CLI fuer reproduzierbare Laeufe und Skripting
+
+## Funktionen
+
+- Karten aus mehreren Tile- oder WMS-Quellen laden
+- ganze Bereiche aus Tiles zusammensetzen
+- transparente Overlays kombinieren, z. B. `OpenFlightMaps base + aero`
+- OpenAIP auf eine Grundkarte legen
+- Karten per Prozent oder per festen Regionen zuschneiden
+- Mittelpunkt oder geographischen Rahmen direkt ueber Koordinaten angeben
+- lokalen Tile-Cache fuer wiederholte Laeufe nutzen
+
+## Kartenquellen
+
+### OpenFlightMaps
+
+- regionale Abdeckung mit internen Luecken
+- `aero` ist transparent
+- `base` ist die Grundkarte
+- sinnvoll fuer Luftfahrtkarten und Overlays
+
+### GeoPF Frankreich
+
+- SCAN-OACI ueber WMTS
+- auf Frankreich begrenzt
+- Bereich kann ueber Mittelpunkt oder geographischen Rahmen bestimmt werden
+
+### OpenAIP
+
+- Raster-Tiles und Vector-Tiles
+- API-Key erforderlich
+- optional mit Grundkarte darunter
+
+### Schweizer Wanderkarte
+
+- GeoAdmin WMS
+- serverseitiger Zuschnitt per Bounding Box
+- optional mit ASTRA-Sperrungen und Umleitungen
+
+## Voraussetzungen
+
+- Windows 64-Bit
+- Python `3.12`
+- Internetzugang fuer die Kartenquellen
+
+Fuer `OpenAIP` zusaetzlich:
+
+- gueltiger API-Key
+
+## Installation
+
+Virtuelle Umgebung anlegen und Abhaengigkeiten installieren:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
 Oder als Paket im Entwicklungsmodus:
 
-```bash
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
-```
-
-Danach steht auch der Console-Entrypoint zur Verfuegung:
-
-```bash
-kartencrop --help
-```
-
-## Struktur
-
-- `kartencrop/providers.py`: Tile-Provider fuer OpenFlightMaps, GeoPF, OpenAIP und Basiskarten
-- `kartencrop/swissgeo.py`: GeoAdmin-WMS-Helfer fuer die Schweiz
-- `kartencrop/tiles.py`: Bounds, Stitching und Preview-Speicherung
-- `kartencrop/crop.py`: Cropping-Helfer
-- `kartencrop/cli.py`: Zentrale CLI
-- `kartencrop/http.py`: HTTP-Helfer fuer Experimente
-- `kartencrop/openaip.py`: Gemeinsame OpenAIP-Requests
-- `kartencrop/ui_models.py`: Typisierte UI-Konfigurationen fuer OFM, GeoPF, Swiss und OpenAIP
-- `kartencrop/cache.py`: Persistenter Tile-Disk-Cache fuer UI und CLI
-- `docs/openaip_api/`: lokal gespeicherte OpenAIP-Referenzdoku
-- `outputs/generated/`: Standardziel der Streamlit-UI
-- `outputs/samples/`: abgelegte Beispielbilder und alte Render-Artefakte
-- `outputs/smoke/`: Smoke-Test-Ausgaben
-- `outputs/cache/tiles/`: lokaler Tile-Cache fuer wiederholte Vorschau- und Build-Laeufe
-- `experiments/`: fruehere Test- und Diagnoseskripte
-- `legacy/`: alte Wrapper-Skripte
-
-## CLI-Beispiele
-
-```bash
-python -m kartencrop.cli ofm-full --zoom 8 --start-x 144 --start-y 72 --output openflightmaps_finland_z8_full.jpg
-python -m kartencrop.cli ofm-composite-full --zoom 8 --start-x 144 --start-y 72 --output openflightmaps_finland_base_aero.png
-python -m kartencrop.cli ofm-bbox --zoom 8 --lat-min 35 --lon-min -10 --lat-max 62 --lon-max 25 --chart-type aero --output ofm_europe_bbox.png
-python -m kartencrop.cli ofm-composite-bbox --zoom 8 --lat-min 35 --lon-min -10 --lat-max 62 --lon-max 25 --output ofm_europe_composite_bbox.png
-python -m kartencrop.cli ofm-probe --zoom 8 --x 129 --y 90 --output probe.png
-python -m kartencrop.cli geopf-full --tilematrix 11 --start-col 1025 --start-row 721 --output france_aviation_map_full.jpg
-python -m kartencrop.cli geopf-center --tilematrix 11 --lat 46.227638 --lon 2.213749 --radius 2 --output france_aviation_map_center.jpg
-python -m kartencrop.cli geopf-bbox --tilematrix 11 --lat-min 45.8 --lon-min 1.6 --lat-max 46.6 --lon-max 2.8 --output france_aviation_map_bbox.jpg
-python -m kartencrop.cli swiss-wms --preset wanderkarte --center-lat 46.95108 --center-lon 7.43864 --span-x 10000 --span-y 10000 --output schweizer_wanderkarte.png
-python -m kartencrop.cli swiss-wms --preset wanderkarte --center-lat 46.95108 --center-lon 7.43864 --span-x 10000 --span-y 10000 --include-closures --identify-closures --identify-output sperrungen.json --output schweizer_wanderkarte_mit_sperrungen.png
-python -m kartencrop.cli openaip-png-probe --zoom 8 --x 134 --y 84 --layer openaip --output openaip_probe.png
-python -m kartencrop.cli openaip-png-full --zoom 8 --start-x 134 --start-y 84 --layer hotspots --output openaip_hotspots.png
-python -m kartencrop.cli openaip-composite-full --zoom 9 --start-x 270 --start-y 170 --layer openaip --output openaip_composite.png
-python -m kartencrop.cli openaip-style --style openaip-default-style --output openaip-default-style.json
-python -m kartencrop.cli latlon-to-tile --lat 51.5413 --lon 9.9158 --zoom 12
-python -m kartencrop.cli bbox-to-tiles --lat-min 51.4 --lon-min 9.7 --lat-max 51.8 --lon-max 10.2 --zoom 12
-python -m kartencrop.cli openaip-vector-grid --zoom 12 --start-x 2160 --start-y 1360 --width 3 --height 3 --layers airports,airspaces,navaids,reporting_points,obstacles,rc_airfields --output openaip_vector_grid.png
-python -m kartencrop.cli crop-percent --image openflightmaps_finland_z8_full.jpg --width-pct 25 --height-pct 25
-python -m kartencrop.cli crop-regions --image openflightmaps_finland_z8_full.jpg --regions "100,100,400,400;500,200,900,650"
-```
-
-## Hinweise
-
-- OpenFlightMaps hat eine unregelmaessige regionale Abdeckung mit internen Luecken. Fuer groessere Ausschnitte ist `ofm-bbox` meist robuster als reine Grenzsuche.
-- `ofm-composite-full` und `ofm-composite-bbox` legen die transparente `aero`-Karte auf die `base`-Grundkarte.
-- GeoPF SCAN-OACI ist auf Frankreich fokussiert und unterstuetzt jetzt sowohl technische Start-Spalten/Zeilen als auch `GPS-Mittelpunkt` und `geographischen Rahmen`.
-- `swiss-wms` schneidet GeoAdmin WMS serverseitig per `BBOX` in `EPSG:2056` aus. Das Standard-Preset ist die Schweizer Wanderkarte.
-- Optional kann `swiss-wms` den offiziellen ASTRA-Layer `ch.astra.wanderland-sperrungen_umleitungen` einblenden und Sperrungsdetails per GeoAdmin-REST-API am Kartenmittelpunkt abfragen.
-- OpenAIP-Vektortiles unterstuetzen API-Key-Auth per `x-openaip-api-key` Header und `apiKey` Query-Parameter.
-- OpenAIP Tiles API unterstuetzt:
-  - `GET /data/openaip/{z}/{x}/{y}.pbf` (vector)
-  - `GET /data/{openaip|hotspots}/{z}/{x}/{y}.png` (raster)
-  - `GET /styles/{openaip-default-style|openaip-satellite-style}.json`
-- `openaip-composite-full` mischt OpenAIP mit einer ESRI-Basiskarte, damit Regionen und Topografie lesbar bleiben.
-- Wiederholte Tile-Abfragen werden lokal unter `outputs/cache/tiles/` zwischengespeichert.
-- HTTP-Anfragen an externe Provider verwenden einen einfachen Retry-/Backoff-Pfad fuer `429` und `5xx`.
-- Grosse Tile-Mosaike werden beim Speichern automatisch ueber einen speicherschonenden Renderpfad aufgebaut, damit UI und CLI bei grossen Karten nicht das komplette Endbild nur im RAM halten muessen.
-- Die Streamlit-UI speichert letzte Quelle, Presets und Eingaben lokal unter `outputs/config/ui_state.json` und stellt sie beim naechsten Start wieder her.
-- In der Seitenleiste kann die lokal gespeicherte UI-Konfiguration mit einem Reset-Button wieder auf die Projekt-Defaults zurueckgesetzt werden.
-- GeoPF liest die Tile-Grenzen bevorzugt dynamisch aus den WMTS-Capabilities und faellt nur bei Bedarf auf den statischen Projekt-Fallback zurueck.
-- Die UI bietet fuer alle kartenbasierten Quellen eine interaktive Rechteckauswahl auf einer Basemap, uebernimmt den gewaehlten Rahmen direkt in die Koordinatenfelder und zeigt Klick-Koordinaten (Breiten-/Laengengrad) direkt aus der Karte an.
-
-OpenAIP-Auth-Beispiel (PowerShell):
-
 ```powershell
-$env:OPENAIP_API_KEY="your_api_key"
-.\.venv\Scripts\python.exe -c "from kartencrop.openaip import openaip_session, fetch_vector_tile; s=openaip_session(); r=fetch_vector_tile(8,134,84,session=s); print(r.status_code, r.content_type, len(r.content))"
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
+
+Danach stehen zur Verfuegung:
+
+- `kartencrop`
+- `kartencrop-ui`
 
 ## UI
 
-Interaktive UI starten:
-
-```bash
-.venv\Scripts\python.exe -m streamlit run map_ui.py
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run map_ui.py
 ```
 
-Die UI speichert neue Ergebnisse standardmaessig unter `outputs/generated/`.
+Oder:
 
-Standalone-Windows-Exe bauen:
+```powershell
+kartencrop-ui
+```
+
+Standardziel fuer neue Ausgaben:
+
+- `outputs/generated/`
+
+Die UI speichert den letzten lokalen Zustand unter:
+
+- `outputs/config/ui_state.json`
+
+## CLI
+
+Hilfe:
+
+```powershell
+kartencrop --help
+```
+
+Beispiele:
+
+### OpenFlightMaps
+
+```powershell
+kartencrop ofm-bbox --zoom 8 --lat-min 35 --lon-min -10 --lat-max 62 --lon-max 25 --chart-type aero --output ofm_europe.png
+kartencrop ofm-composite-bbox --zoom 8 --lat-min 35 --lon-min -10 --lat-max 62 --lon-max 25 --output ofm_europe_composite.png
+```
+
+### GeoPF Frankreich
+
+```powershell
+kartencrop geopf-center --tilematrix 11 --lat 48.8566 --lon 2.3522 --radius 2 --output geopf_paris.jpg
+kartencrop geopf-bbox --tilematrix 11 --lat-min 45.8 --lon-min 1.6 --lat-max 46.6 --lon-max 2.8 --output geopf_bbox.jpg
+```
+
+### Schweizer Wanderkarte
+
+```powershell
+kartencrop swiss-wms --preset wanderkarte --center-lat 46.4067 --center-lon 8.6047 --span-x 10000 --span-y 10000 --output schweiz.png
+```
+
+Mit Sperrungen:
+
+```powershell
+kartencrop swiss-wms --preset wanderkarte --center-lat 46.4067 --center-lon 8.6047 --span-x 10000 --span-y 10000 --include-closures --output schweiz_mit_sperrungen.png
+```
+
+### OpenAIP
+
+PowerShell:
+
+```powershell
+$env:OPENAIP_API_KEY="dein_api_key"
+```
+
+Dann z. B.:
+
+```powershell
+kartencrop openaip-png-full --zoom 9 --start-x 275 --start-y 167 --layer openaip --output openaip.png
+kartencrop openaip-composite-full --zoom 9 --start-x 275 --start-y 167 --layer openaip --output openaip_composite.png
+```
+
+### Cropping
+
+```powershell
+kartencrop crop-percent --image ofm_europe.png --width-pct 25 --height-pct 25
+kartencrop crop-regions --image ofm_europe.png --regions "100,100,400,400;500,200,900,650"
+```
+
+## Wichtige Hinweise
+
+- `OpenFlightMaps` hat keine saubere rechteckige Vollabdeckung. Leere Stellen innerhalb eines grossen Bereichs sind normal.
+- `GeoPF` ist fachlich und technisch auf Frankreich begrenzt.
+- `OpenAIP` benoetigt fuer produktive Nutzung einen API-Key.
+- Die UI rundet tilebasierte Rahmen immer auf ganze Tiles. Dadurch kann der effektiv geladene Bereich je nach Detailstufe etwas groesser sein als der eingegebene Koordinatenrahmen.
+- Schweizer WMS-Karten haben keinen eigenen Zoomparameter. Der sichtbare Detailgrad entsteht dort aus Bounding Box und Ausgabeaufloesung.
+
+## Aufbau
+
+- `kartencrop/`: Kernpaket
+- `map_ui.py`: Streamlit-Einstieg
+- `tests/`: Test-Suite
+- `scripts/`: Hilfsskripte, u. a. Exe-Build
+- `experiments/`: Diagnose- und Testskripte
+- `legacy/`: alte Wrapper
+- `docs/`: lokale Referenzdateien
+
+Wichtige Module:
+
+- `kartencrop/providers.py`: Kartenquellen
+- `kartencrop/tiles.py`: Tile-Rendering und speicherschonendes Speichern
+- `kartencrop/cli.py`: CLI
+- `kartencrop/swissgeo.py`: GeoAdmin-Helfer
+- `kartencrop/ui_render.py`: UI-Konfiguration
+- `kartencrop/ui_actions.py`: UI-Aktionen
+
+## Tests
+
+Standard:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+Optionale Live-Tests:
+
+```powershell
+$env:RUN_LIVE_TESTS="1"
+$env:OPENAIP_API_KEY="dein_api_key"
+.\.venv\Scripts\python.exe -m pytest -q -m live
+```
+
+## Standalone-Exe
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 powershell -ExecutionPolicy Bypass -File .\scripts\build_standalone_exe.ps1 -Clean
 ```
 
-Danach liegt die portable Anwendung unter:
+Die Exe liegt danach in einem `dist_portable...`-Ordner, z. B.:
 
 ```text
-dist_portable\KartencropUI\KartencropUI.exe
+dist_portable_YYYYMMDD_HHMMSS\KartencropUI\KartencropUI.exe
 ```
 
-Falls ein alter Ausgabeordner noch gesperrt ist, weicht das Build-Skript automatisch auf einen neuen Ordner wie `dist_portable_YYYYMMDD_HHMMSS\KartencropUI\KartencropUI.exe` aus.
+Hinweise zur Exe:
 
-Die Exe startet den lokalen Streamlit-Server selbst und oeffnet die UI automatisch im Browser.
+- laeuft ohne lokale Python-Installation
+- benoetigt weiter Internetzugang
+- startet lokal einen Streamlit-Server und oeffnet die Oberflaeche im Browser
+- der komplette Exe-Ordner muss zusammenbleiben
 
-Aktueller UI-Stand:
+## Lizenz und Datenquellen
 
-- Quellen: `OpenFlightMaps`, `GeoPF`, `Schweizer Wanderkarte`, `OpenAIP`
-- Hauptmodus: pro Quelle nur noch `Mittelpunkt` oder `Geographischer Rahmen`
-- `Expertenmodus`: technische Tile-Eingaben, Diagnoseoptionen und Spezialparameter
-- OpenAIP ist in der UI zusammengefasst:
-  - `Nur OpenAIP`
-  - `OpenAIP mit Regionskarte`
-- Schweizer Karte ist im Normalmodus vereinfacht:
-  - Ausschnitt als einfache km-Auswahl
-  - Ausgabequalitaet statt roher Pixelwerte
+Die Software in diesem Repository und die einzelnen Kartenquellen sind getrennt zu betrachten.
 
-## Tests
+Vor Nutzung und Weitergabe von Kartenausschnitten solltest du die Bedingungen der jeweiligen Anbieter pruefen:
 
-```bash
-.venv\Scripts\python.exe -m pytest -q
-```
+- OpenFlightMaps
+- GeoPF / IGN France
+- OpenAIP
+- GeoAdmin / swisstopo / ASTRA
 
-Mit Paketinstallation:
-
-```bash
-.venv\Scripts\python.exe -m pytest -q
-```
-
-Optionale Live-Smoke-Tests gegen echte Provider:
-
-```bash
-$env:RUN_LIVE_TESTS="1"
-$env:OPENAIP_API_KEY="your_api_key"
-.venv\Scripts\python.exe -m pytest -q -m live
-```
-
-## Legacy-Wrapper
-
-Alte Wrapper liegen jetzt unter `legacy/`:
-
-- `legacy/create_openflightmaps_full.py`
-- `legacy/create_full_map.py`
-- `legacy/crop_maps.py`
-
-Weitere Diagnose- und Testskripte liegen unter `experiments/`.
